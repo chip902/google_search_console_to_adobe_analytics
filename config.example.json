@@ -14,5 +14,8 @@
     "ctr_event": "997",
     "clicks_event": "998",
     "impressions_event": "999",
-    "position_event": "1000"
+    "position_event": "1000",
+    "max_rows_per_day": 50000,
+    "start_date": "2025-01-01",
+    "end_date": "2025-01-01"
 }
