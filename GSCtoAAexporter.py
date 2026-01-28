@@ -71,7 +71,7 @@ else:
 
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]
 GOOGLE_TOKEN_FILE = "google_token.json"
-GOOGLE_CLIENT_SECRETS_FILE = "client_secret_amtrak.com.json"
+GOOGLE_CLIENT_SECRETS_FILE = "client_secret.json"
 
 
 def get_authenticated_google_service():
