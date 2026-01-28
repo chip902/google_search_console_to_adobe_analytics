@@ -1,2 +1,5 @@
 client_secrets.json
 *_config.json
+google_token.json
+oauth2.json
+*.log

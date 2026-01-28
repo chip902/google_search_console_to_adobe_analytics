@@ -1,22 +1,20 @@
 import datetime
+import os
 import requests
 import sys
-import jwt
 import re
-import httplib2
 import json
 
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from oauth2client.client import flow_from_clientsecrets
-from oauth2client.file import Storage
-from oauth2client.tools import argparser, run_flow
 
 # Open and load the configuration file
 with open('config.json', 'r') as file:
     config = json.load(file)
 
-config["key"] = bytes(config["key"], 'utf-8')
 base = datetime.datetime.today()
 date_list = [(base - datetime.timedelta(days=x)).strftime("%Y-%m-%d") for x in range(config["lookback_days"])]
 
@@ -57,48 +55,56 @@ if not config["type_evar"]:
     print("No Type Evar given. Aborting...")
     sys.exit()
 
+GOOGLE_SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]
+GOOGLE_TOKEN_FILE = "google_token.json"
+GOOGLE_CLIENT_SECRETS_FILE = "client_secrets.json"
+
 def get_authenticated_google_service():
-    flow = flow_from_clientsecrets("client_secrets.json", scope="https://www.googleapis.com/auth/webmasters.readonly",
-    message="MISSING_CLIENT_SECRETS_MESSAGE")
-    storage = Storage("oauth2.json")
-    credentials = storage.get()
-    if credentials is None or credentials.invalid:
-        credentials = run_flow(flow, storage)
-    return build("webmasters", "v3", http=credentials.authorize(httplib2.Http()))
+    creds = None
+    if os.path.exists(GOOGLE_TOKEN_FILE):
+        creds = Credentials.from_authorized_user_file(GOOGLE_TOKEN_FILE, GOOGLE_SCOPES)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                GOOGLE_CLIENT_SECRETS_FILE, GOOGLE_SCOPES
+            )
+            creds = flow.run_local_server(port=0)
+        with open(GOOGLE_TOKEN_FILE, "w") as token:
+            token.write(creds.to_json())
+    return build("webmasters", "v3", credentials=creds)
 
 search_console = get_authenticated_google_service()
 
-def get_jwt_token(config):
-    return jwt.encode({
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(seconds=30),
-        "iss": config["orgId"],
-        "sub": config["technicalAccountId"],
-        "https://{}/s/{}".format(config["imsHost"], config["metascopes"]): True,
-        "aud": "https://{}/c/{}".format(config["imsHost"], config["apiKey"])
-    }, config["key"], algorithm='RS256')
+ADOBE_TOKEN_URL = "https://ims-na1.adobelogin.com/ims/token/v3"
+ADOBE_DISCOVERY_URL = "https://analytics.adobe.io/discovery/me"
 
-def get_access_token(config, jwt_token):
-    post_body = {
-        "client_id": config["apiKey"],
-        "client_secret": config["secret"],
-        "jwt_token": jwt_token
-    }
-
-    response = requests.post(config["imsExchange"], data=post_body)
+def get_adobe_access_token(config):
+    response = requests.post(
+        ADOBE_TOKEN_URL,
+        data={
+            "grant_type": "client_credentials",
+            "client_id": config["apiKey"],
+            "client_secret": config["client_secret"],
+            "scope": config["scopes"]
+        }
+    )
+    response.raise_for_status()
     return response.json()["access_token"]
 
 def get_first_global_company_id(config, access_token):
     response = requests.get(
-        config["discoveryUrl"],
+        ADOBE_DISCOVERY_URL,
         headers={
             "Authorization": "Bearer {}".format(access_token),
             "x-api-key": config["apiKey"]
         }
     )
+    response.raise_for_status()
     return response.json().get("imsOrgs")[0].get("companies")[0].get("globalCompanyId")
 
-jwt_token = get_jwt_token(config)
-access_token = get_access_token(config, jwt_token)
+access_token = get_adobe_access_token(config)
 global_company_id = get_first_global_company_id(config, access_token)
 
 dataSources = requests.post(
