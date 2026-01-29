@@ -17,6 +17,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 with open('config.json', 'r') as file:
     config = json.load(file)
 
+MAX_DAYS_PER_RUN = 90
+
 if config.get("start_date") and config.get("end_date"):
     start = datetime.datetime.strptime(config["start_date"], "%Y-%m-%d")
     end = datetime.datetime.strptime(config["end_date"], "%Y-%m-%d")
@@ -30,6 +32,14 @@ else:
     date_list = [(base - datetime.timedelta(days=x)).strftime("%Y-%m-%d")
                  for x in range(config["lookback_days"])]
     print("Using lookback: {} days from today".format(config["lookback_days"]))
+
+if len(date_list) > MAX_DAYS_PER_RUN:
+    print("Warning: Date range exceeds {} days. Truncating to first {} days.".format(
+        MAX_DAYS_PER_RUN, MAX_DAYS_PER_RUN))
+    print("  Original range: {} days ({} to {})".format(
+        len(date_list), date_list[0], date_list[-1]))
+    date_list = date_list[:MAX_DAYS_PER_RUN]
+    print("  Truncated to: {} to {}".format(date_list[0], date_list[-1]))
 
 if config.get("clicks_event") or config.get("impressions_event") or config.get("position_event") or config.get("ctr_event"):
     if config.get("url_evar") and config.get("keyword_evar"):
@@ -249,12 +259,11 @@ for query_date in date_list:
                 batch_start = batch_num * upload_batch_size
                 batch_end = batch_start + upload_batch_size
                 batch_rows = result_rows[batch_start:batch_end]
-                is_last_batch = (batch_num == total_batches - 1)
                 job_name = config["job_prefix"]+"_"+operating_mode+"_"+query_date
                 if total_batches > 1:
                     job_name += "_part{}".format(batch_num + 1)
-                print("  Uploading batch {}/{} ({} rows, finished={})".format(
-                    batch_num + 1, total_batches, len(batch_rows), is_last_batch))
+                print("  Uploading batch {}/{} ({} rows)".format(
+                    batch_num + 1, total_batches, len(batch_rows)))
                 jobresponse = requests.post(
                     "https://api.omniture.com/admin/1.4/rest/?method=DataSources.UploadData",
                     headers={
@@ -266,7 +275,7 @@ for query_date in date_list:
                         "columns": datasource_columns,
                         'reportSuiteID': config["report_suite_id"],
                         'dataSourceID': dataSourceID,
-                        "finished": is_last_batch,
+                        "finished": True,
                         "jobName": job_name,
                         "rows": batch_rows
                     }

@@ -208,6 +208,7 @@ Combine with `"dry_run": true` to preview data for a single day without uploadin
 
 ## Limitations
 
-- The GSC API returns up to 10,000 rows per request. The script automatically paginates to fetch all available data, capped at `max_rows_per_day` (default: 50,000) to prevent runaway queries.
-- GSC data is typically available with a 2-3 day delay
-- The script uses the Adobe Analytics 1.4 DataSources API (there is no 2.0 equivalent for aggregate data import)
+- **90 days per run**: Adobe Data Sources can only process 90 days of historical data per day. The script automatically truncates date ranges exceeding 90 days and warns you. Run the script on consecutive days to backfill larger ranges.
+- **10,000 rows per API call**: The GSC API returns up to 10,000 rows per request. The script automatically paginates to fetch all available data, capped at `max_rows_per_day` (default: 50,000) to prevent runaway queries.
+- **10,000 rows per upload**: The Adobe DataSources API accepts up to 10,000 rows per call. The script automatically batches larger uploads into multiple jobs (named `_part1`, `_part2`, etc.).
+- **1.4 API only**: The script uses the Adobe Analytics 1.4 DataSources API (there is no 2.0 equivalent for aggregate data import).
