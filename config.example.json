@@ -17,5 +17,6 @@
     "position_event": "1000",
     "max_rows_per_day": 50000,
     "start_date": "2025-01-01",
-    "end_date": "2025-01-01"
+    "end_date": "2025-01-01",
+    "dry_run": true
 }

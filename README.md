@@ -156,6 +156,7 @@ If both `start_date`/`end_date` and `lookback_days` are present, the explicit da
 | `start_date` | Start of explicit date range (`YYYY-MM-DD`), used instead of `lookback_days` |
 | `end_date` | End of explicit date range (`YYYY-MM-DD`), used instead of `lookback_days` |
 | `max_rows_per_day` | Maximum rows to fetch per day from GSC (optional, default: 50,000). Acts as a guardrail to prevent runaway queries. |
+| `dry_run` | Set to `true` to fetch GSC data and preview it without uploading to Adobe (optional, default: `false`) |
 | `type_evar` | eVar number to label the import type (optional) |
 | `url_evar` | eVar number for landing page URLs (optional — omit to skip URL import) |
 | `keyword_evar` | eVar number for natural search keywords (optional — omit to skip keyword import) |
@@ -178,6 +179,22 @@ The script will:
 4. For each remaining date, query GSC for up to 10,000 rows of keyword/URL performance data
 5. Upload each day's data to Adobe Analytics via the DataSources.UploadData API
 
+### Dry Run Mode
+
+To preview the data without uploading to Adobe, add `"dry_run": true` to your config. The script will still authenticate and fetch GSC data, but instead of uploading it will print the column headers, total row count, and the first 5 rows so you can verify the data shape:
+
+```
+--- DRY RUN (not uploading) ---
+Columns: ['Date', 'Evar 8', 'Evar 29', 'Event 35', 'Event 36', 'Event 37', 'Event 38']
+Total rows: 39379
+Sample rows (first 5):
+  ['01/01/2025/00/00/00', 'https://www.amtrak.com/home', 'amtrak tickets', '45', '1200', '3.2', '0.0375']
+  ...
+--- END DRY RUN ---
+```
+
+Set `"dry_run": false` or remove it when you're ready to upload for real.
+
 ### Testing with a Single Day
 
 To test before doing a full import, set `start_date` and `end_date` to the same date:
@@ -187,7 +204,7 @@ To test before doing a full import, set `start_date` and `end_date` to the same 
 "end_date": "2025-01-20"
 ```
 
-This will fetch and upload just one day of data so you can verify everything is configured correctly.
+Combine with `"dry_run": true` to preview data for a single day without uploading.
 
 ## Limitations
 

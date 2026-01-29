@@ -4,12 +4,14 @@ import requests
 import sys
 import re
 import json
+try:
+    from urllib.parse import quote
+except ImportError:
+    from urllib import quote
 
-from google.auth.transport.requests import Request
+from google.auth.transport.requests import Request, AuthorizedSession
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 
 # Open and load the configuration file
 with open('config.json', 'r') as file:
@@ -74,7 +76,10 @@ GOOGLE_TOKEN_FILE = "google_token.json"
 GOOGLE_CLIENT_SECRETS_FILE = "client_secret.json"
 
 
-def get_authenticated_google_service():
+GSC_API_BASE = "https://www.googleapis.com/webmasters/v3"
+
+
+def get_authenticated_google_session():
     creds = None
     if os.path.exists(GOOGLE_TOKEN_FILE):
         creds = Credentials.from_authorized_user_file(
@@ -89,10 +94,10 @@ def get_authenticated_google_service():
             creds = flow.run_local_server(port=8085)
         with open(GOOGLE_TOKEN_FILE, "w") as token:
             token.write(creds.to_json())
-    return build("webmasters", "v3", credentials=creds)
+    return AuthorizedSession(creds)
 
 
-search_console = get_authenticated_google_service()
+google_session = get_authenticated_google_session()
 
 ADOBE_TOKEN_URL = "https://ims-na1.adobelogin.com/ims/token/v3"
 ADOBE_DISCOVERY_URL = "https://analytics.adobe.io/discovery/me"
@@ -188,8 +193,11 @@ for query_date in date_list:
             'rowLimit': 10000,
             'startRow': start_row
         }
-        result = search_console.searchanalytics().query(
-            siteUrl=config["google_property"], body=request).execute()
+        gsc_url = "{}/sites/{}/searchAnalytics/query".format(
+            GSC_API_BASE, quote(config["google_property"], safe=''))
+        gsc_response = google_session.post(gsc_url, json=request)
+        gsc_response.raise_for_status()
+        result = gsc_response.json()
         batch = result.get("rows", [])
         gsc_rows.extend(batch)
         print("  Fetched {} rows (total: {})".format(len(batch), len(gsc_rows)))
@@ -226,22 +234,44 @@ for query_date in date_list:
             result_rows.append(row_to_append)
 
     if len(result_rows) > 0:
-        jobresponse = requests.post(
-            "https://api.omniture.com/admin/1.4/rest/?method=DataSources.UploadData",
-            headers={
-                "Authorization": "Bearer {}".format(access_token),
-                "x-api-key": config["apiKey"],
-                "x-proxy-global-company-id": global_company_id
-            },
-            json={
-                "columns": datasource_columns,
-                'reportSuiteID': config["report_suite_id"],
-                'dataSourceID': dataSourceID,
-                "finished": True,
-                "jobName": config["job_prefix"]+"_"+operating_mode+"_"+query_date,
-                "rows": result_rows
-            }
-        )
+        if config.get("dry_run"):
+            print("\n--- DRY RUN (not uploading) ---")
+            print("Columns: {}".format(datasource_columns))
+            print("Total rows: {}".format(len(result_rows)))
+            print("Sample rows (first 5):")
+            for sample_row in result_rows[:5]:
+                print("  {}".format(sample_row))
+            print("--- END DRY RUN ---\n")
+        else:
+            upload_batch_size = 10000
+            total_batches = (len(result_rows) + upload_batch_size - 1) // upload_batch_size
+            for batch_num in range(total_batches):
+                batch_start = batch_num * upload_batch_size
+                batch_end = batch_start + upload_batch_size
+                batch_rows = result_rows[batch_start:batch_end]
+                is_last_batch = (batch_num == total_batches - 1)
+                job_name = config["job_prefix"]+"_"+operating_mode+"_"+query_date
+                if total_batches > 1:
+                    job_name += "_part{}".format(batch_num + 1)
+                print("  Uploading batch {}/{} ({} rows, finished={})".format(
+                    batch_num + 1, total_batches, len(batch_rows), is_last_batch))
+                jobresponse = requests.post(
+                    "https://api.omniture.com/admin/1.4/rest/?method=DataSources.UploadData",
+                    headers={
+                        "Authorization": "Bearer {}".format(access_token),
+                        "x-api-key": config["apiKey"],
+                        "x-proxy-global-company-id": global_company_id
+                    },
+                    json={
+                        "columns": datasource_columns,
+                        'reportSuiteID': config["report_suite_id"],
+                        'dataSourceID': dataSourceID,
+                        "finished": is_last_batch,
+                        "jobName": job_name,
+                        "rows": batch_rows
+                    }
+                )
+                print("  Upload response: {} {}".format(jobresponse.status_code, jobresponse.text))
     else:
         print("No Data for "+query_date)
     i += 1
