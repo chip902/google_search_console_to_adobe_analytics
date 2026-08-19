@@ -1,0 +1,25 @@
+# Dependabot configuration - managed centrally.
+#
+# Posture: SECURITY-ONLY, GROUPED, MONTHLY.
+#   * open-pull-requests-limit: 0 disables routine version-bump PRs.
+#     Dependabot SECURITY updates are unaffected by this limit and still open PRs.
+#   * The groups block collapses all security bumps for an ecosystem into a
+#     single PR instead of one PR per package.
+#
+# To also get routine version updates, raise open-pull-requests-limit (e.g. 5)
+# and add a second group with `applies-to: version-updates`.
+version: 2
+updates:
+- package-ecosystem: pip
+  directory: /
+  schedule:
+    interval: monthly
+  open-pull-requests-limit: 0
+  labels:
+  - dependencies
+  - security
+  groups:
+    pip-root-security:
+      applies-to: security-updates
+      patterns:
+      - '*'
